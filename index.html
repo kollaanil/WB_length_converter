@@ -7,6 +7,7 @@
 <title>WB · Length Converter</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet" />
 <style>
+  :root { --kb: 0px; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     background: #FAFAF8;
@@ -17,7 +18,7 @@
   }
   body {
     position: relative;
-    padding: 28px 20px 120px;
+    padding: 28px 20px calc(130px + env(safe-area-inset-bottom));
     max-width: 560px;
     margin: 0 auto;
   }
@@ -72,6 +73,8 @@
     background: linear-gradient(135deg, rgba(61, 214, 160, 0.06), rgba(27, 124, 138, 0.06));
     box-shadow: 0 2px 12px rgba(27, 124, 138, 0.10);
   }
+  /* Other fields fade while a new value is being typed, until Convert */
+  .card.stale input { color: #B5ADA5; }
   .label {
     font-size: 10px;
     letter-spacing: 2px;
@@ -94,47 +97,63 @@
   }
   .card.active .src-badge { opacity: 1; }
 
-  .row {
-    display: flex;
-    gap: 8px;
-    align-items: stretch;
-  }
-  .field-group {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .field-group { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .field-mini {
     font-size: 9px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: #8A8078;
   }
-  input[type="number"] {
+  .input-wrap { position: relative; flex: 1; min-width: 0; }
+  input[type="text"] {
     width: 100%;
     background: #FAFAF8;
     border: 1px solid rgba(0,0,0,0.08);
     border-radius: 6px;
-    padding: 12px 14px;
+    padding: 12px 44px 12px 14px;
     color: #1A1714;
     font-family: 'DM Sans', sans-serif;
     font-size: 17px;
     font-weight: 500;
     outline: none;
-    transition: border-color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
     -moz-appearance: textfield;
     appearance: textfield;
   }
-  input[type="number"]::-webkit-outer-spin-button,
-  input[type="number"]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
+  input[type="text"]::-webkit-outer-spin-button,
+  input[type="text"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="text"]:focus { border-color: rgba(27, 124, 138, 0.55); background: #FFFFFF; }
+
+  /* Per-field clear (×) — only visible when the field has a value */
+  .x {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%) scale(0.8);
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #8A8078;
+    font-size: 18px;
+    line-height: 32px;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
   }
-  input[type="number"]:focus {
-    border-color: rgba(27, 124, 138, 0.55);
-    background: #FFFFFF;
+  .x::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.07);
+    z-index: -1;
   }
+  .input-wrap.has-val .x { opacity: 1; pointer-events: auto; transform: translateY(-50%) scale(1); }
 
   .footnote {
     font-size: 10px;
@@ -145,50 +164,106 @@
     margin-top: 18px;
   }
 
-  /* Bottom action bar */
-  .actions {
+  /* Floating dock */
+  .dock-fade {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(250, 250, 248, 0.92);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(0,0,0,0.06);
-    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
-    z-index: 10;
+    left: 0; right: 0; bottom: 0;
+    height: calc(120px + env(safe-area-inset-bottom));
+    background: linear-gradient(to bottom, rgba(250,250,248,0), rgba(250,250,248,0.95) 55%);
+    pointer-events: none;
+    z-index: 9;
   }
-  .actions-inner {
-    max-width: 520px;
-    margin: 0 auto;
+  .dock {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom) + var(--kb));
+    transform: translateX(-50%);
+    width: min(520px, calc(100% - 32px));
     display: flex;
     gap: 10px;
+    z-index: 20;
+    transition: bottom 0.18s ease;
   }
   .btn {
     border: none;
-    border-radius: 8px;
-    padding: 14px 18px;
+    border-radius: 999px;
+    height: 54px;
+    padding: 0 22px;
     font-family: 'DM Sans', sans-serif;
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
     cursor: pointer;
-    transition: transform 0.1s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: transform 0.1s ease, opacity 0.2s ease, box-shadow 0.2s ease;
     -webkit-tap-highlight-color: transparent;
   }
-  .btn:active { transform: scale(0.97); }
-  .btn-ok {
-    background: linear-gradient(135deg, #1A5C35, #2E9E6B, #1B7C8A);
-    color: #FFFFFF;
-    flex: 2;
-    box-shadow: 0 4px 14px rgba(27, 124, 138, 0.25);
-  }
+  .btn:active { transform: scale(0.96); }
+  .btn:disabled { cursor: default; transform: none; }
+  .btn-clear:disabled { color: #C2BAB2; box-shadow: 0 4px 12px rgba(26, 23, 20, 0.06); }
+  .btn-ok:disabled { background: #B9D6CE; }
   .btn-clear {
     background: #FFFFFF;
     color: #4A453F;
-    border: 1px solid rgba(0,0,0,0.10);
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 6px 18px rgba(26, 23, 20, 0.12);
+  }
+  .btn-clear svg { width: 16px; height: 16px; }
+  .btn-ok {
     flex: 1;
+    background: linear-gradient(135deg, #1A5C35, #2E9E6B, #1B7C8A);
+    color: #FFFFFF;
+    box-shadow: 0 8px 22px rgba(27, 124, 138, 0.35);
+  }
+  .btn-ok:disabled { box-shadow: 0 6px 16px rgba(27, 124, 138, 0.15); }
+  .btn-ok.ready { animation: nudge 1.6s ease-in-out infinite; }
+  @keyframes nudge {
+    0%, 100% { box-shadow: 0 8px 22px rgba(27, 124, 138, 0.35); }
+    50%      { box-shadow: 0 8px 30px rgba(46, 158, 107, 0.60); }
+  }
+
+  /* Undo toast — sits just above the dock */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(84px + env(safe-area-inset-bottom) + var(--kb));
+    transform: translate(-50%, 10px);
+    background: #1A1714;
+    color: #FAFAF8;
+    border-radius: 999px;
+    padding: 6px 6px 6px 18px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.20);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, bottom 0.18s ease;
+    z-index: 30;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .toast button {
+    border: none;
+    background: rgba(61, 214, 160, 0.18);
+    color: #3DD6A0;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 9px 14px;
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { transition: none !important; animation: none !important; }
   }
 </style>
 </head>
@@ -197,26 +272,26 @@
 
   <div class="eyebrow">WallBliss · Internal Tool</div>
   <h1>Length Converter</h1>
-  <p class="subtitle">Type a value in any field, then tap <strong>OK</strong> below. Works offline.</p>
+  <p class="subtitle">Type a value in any field, then tap <strong>Convert</strong>. Works offline.</p>
 
   <div class="card" id="card-mm">
     <div class="label"><span>Millimetres (mm)</span><span class="src-badge">Source</span></div>
     <div class="row">
-      <input type="number" id="in-mm" inputmode="decimal" step="any" placeholder="0" data-src="mm" />
+      <div class="input-wrap"><input class="num" type="text" id="in-mm" inputmode="decimal" autocomplete="off" placeholder="0" data-src="mm" /><button class="x" type="button" aria-label="Clear millimetres">×</button></div>
     </div>
   </div>
 
   <div class="card" id="card-cm">
     <div class="label"><span>Centimetres (cm)</span><span class="src-badge">Source</span></div>
     <div class="row">
-      <input type="number" id="in-cm" inputmode="decimal" step="any" placeholder="0" data-src="cm" />
+      <div class="input-wrap"><input class="num" type="text" id="in-cm" inputmode="decimal" autocomplete="off" placeholder="0" data-src="cm" /><button class="x" type="button" aria-label="Clear centimetres">×</button></div>
     </div>
   </div>
 
   <div class="card" id="card-inch">
     <div class="label"><span>Inches (in)</span><span class="src-badge">Source</span></div>
     <div class="row">
-      <input type="number" id="in-inch" inputmode="decimal" step="any" placeholder="0" data-src="inch" />
+      <div class="input-wrap"><input class="num" type="text" id="in-inch" inputmode="decimal" autocomplete="off" placeholder="0" data-src="inch" /><button class="x" type="button" aria-label="Clear inches">×</button></div>
     </div>
   </div>
 
@@ -225,11 +300,11 @@
     <div class="row">
       <div class="field-group">
         <span class="field-mini">Feet</span>
-        <input type="number" id="in-ft" inputmode="decimal" step="any" placeholder="0" data-src="ft" />
+        <div class="input-wrap"><input class="num" type="text" id="in-ft" inputmode="decimal" autocomplete="off" placeholder="0" data-src="ft" /><button class="x" type="button" aria-label="Clear feet">×</button></div>
       </div>
       <div class="field-group">
         <span class="field-mini">Inches</span>
-        <input type="number" id="in-ftin" inputmode="decimal" step="any" placeholder="0" data-src="ft" />
+        <div class="input-wrap"><input class="num" type="text" id="in-ftin" inputmode="decimal" autocomplete="off" placeholder="0" data-src="ft" /><button class="x" type="button" aria-label="Clear inches part">×</button></div>
       </div>
     </div>
   </div>
@@ -238,16 +313,24 @@
 
 </div>
 
-<div class="actions">
-  <div class="actions-inner">
-    <button class="btn btn-clear" id="clear-btn">Clear</button>
-    <button class="btn btn-ok" id="ok-btn">OK · Convert</button>
-  </div>
+<div class="dock-fade"></div>
+<div class="dock">
+  <button class="btn btn-clear" id="clear-btn" type="button" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    Clear
+  </button>
+  <button class="btn btn-ok" id="ok-btn" type="button" disabled>Convert</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span>All fields cleared</span>
+  <button type="button" id="undo-btn">Undo</button>
 </div>
 
 <script>
   const MM_PER_INCH = 25.4;
   const MM_PER_FOOT = 304.8;
+  const UNDO_MS = 4000;
 
   const el = {
     mm:   document.getElementById('in-mm'),
@@ -262,11 +345,18 @@
     inch: document.getElementById('card-inch'),
     ft:   document.getElementById('card-ft'),
   };
+  const okBtn = document.getElementById('ok-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const toast = document.getElementById('toast');
 
   let activeSrc = null;
+  let dirty = false;      // source edited since last convert
+  let undoSnap = null;
+  let toastTimer = null;
+
+  const inputs = Object.values(el);
 
   function parseNum(v) {
-    if (v === '' || v === null || v === undefined) return 0;
     const n = parseFloat(v);
     return isNaN(n) ? 0 : n;
   }
@@ -278,20 +368,32 @@
     return Number.isInteger(r) ? r.toString() : r.toFixed(1);
   }
 
-  function setActive(src) {
-    activeSrc = src;
+  function srcHasValue(src) {
+    if (!src) return false;
+    if (src === 'ft') return el.ft.value !== '' || el.ftin.value !== '';
+    return el[src].value !== '';
+  }
+
+  function refresh() {
+    inputs.forEach(i => i.parentElement.classList.toggle('has-val', i.value !== ''));
+    const anyVal = inputs.some(i => i.value !== '');
+    clearBtn.disabled = !anyVal;
+    okBtn.disabled = !anyVal;
+    okBtn.classList.toggle('ready', dirty && srcHasValue(activeSrc));
     Object.entries(cards).forEach(([k, c]) => {
-      c.classList.toggle('active', k === src);
+      c.classList.toggle('active', k === activeSrc);
+      c.classList.toggle('stale', dirty && k !== activeSrc && hasCardValue(k));
     });
   }
 
+  function hasCardValue(k) {
+    return k === 'ft' ? (el.ft.value !== '' || el.ftin.value !== '') : el[k].value !== '';
+  }
+
   function convert() {
-    if (!activeSrc) {
-      if (el.mm.value)   activeSrc = 'mm';
-      else if (el.cm.value)   activeSrc = 'cm';
-      else if (el.inch.value) activeSrc = 'inch';
-      else if (el.ft.value || el.ftin.value) activeSrc = 'ft';
-      else return;
+    if (!srcHasValue(activeSrc)) {
+      activeSrc = ['mm', 'cm', 'inch', 'ft'].find(srcHasValue) || null;
+      if (!activeSrc) return;
     }
 
     let mm = 0;
@@ -299,45 +401,110 @@
       case 'mm':   mm = parseNum(el.mm.value); break;
       case 'cm':   mm = parseNum(el.cm.value) * 10; break;
       case 'inch': mm = parseNum(el.inch.value) * MM_PER_INCH; break;
-      case 'ft':
-        mm = parseNum(el.ft.value) * MM_PER_FOOT
-           + parseNum(el.ftin.value) * MM_PER_INCH;
-        break;
+      case 'ft':   mm = parseNum(el.ft.value) * MM_PER_FOOT + parseNum(el.ftin.value) * MM_PER_INCH; break;
     }
 
-    el.mm.value   = fmt(mm);
-    el.cm.value   = fmt(mm / 10);
-    el.inch.value = fmt(mm / MM_PER_INCH);
+    if (activeSrc !== 'mm')   el.mm.value   = fmt(mm);
+    if (activeSrc !== 'cm')   el.cm.value   = fmt(mm / 10);
+    if (activeSrc !== 'inch') el.inch.value = fmt(mm / MM_PER_INCH);
+    if (activeSrc !== 'ft') {
+      // Round total inches first so the inches part never shows 12
+      const totalIn = Math.round((mm / MM_PER_INCH) * 10) / 10;
+      const wholeFt = Math.floor(totalIn / 12);
+      el.ft.value = wholeFt.toString();
+      el.ftin.value = fmt(totalIn - wholeFt * 12);
+    }
 
-    const totalInches = mm / MM_PER_INCH;
-    const wholeFeet = Math.floor(totalInches / 12);
-    const remInches = totalInches - wholeFeet * 12;
-    el.ft.value = wholeFeet.toString();
-    el.ftin.value = fmt(remInches);
-
-    setActive(activeSrc);
+    dirty = false;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+    refresh();
   }
 
-  Object.values(el).forEach(input => {
-    input.addEventListener('focus', () => setActive(input.dataset.src));
-    input.addEventListener('input', () => setActive(input.dataset.src));
+  function hideToast() {
+    toast.classList.remove('show');
+    clearTimeout(toastTimer);
+    undoSnap = null;
+  }
+
+  function clearAll() {
+    undoSnap = { vals: inputs.map(i => i.value), src: activeSrc, dirty };
+    inputs.forEach(i => i.value = '');
+    activeSrc = null;
+    dirty = false;
+    if (document.activeElement) document.activeElement.blur();
+    refresh();
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, UNDO_MS);
+  }
+
+  function undoClear() {
+    if (!undoSnap) return;
+    inputs.forEach((i, idx) => i.value = undoSnap.vals[idx]);
+    activeSrc = undoSnap.src;
+    dirty = undoSnap.dirty;
+    hideToast();
+    refresh();
+  }
+
+  inputs.forEach(input => {
+    // Tap a filled field → whole value selected, so typing replaces it
+    let justFocused = false;
+    input.addEventListener('focus', () => {
+      activeSrc = input.dataset.src;
+      justFocused = true;
+      input.select();
+      refresh();
+    });
+    // Stop the tap's mouseup from collapsing the selection
+    input.addEventListener('mouseup', e => { if (justFocused) { e.preventDefault(); justFocused = false; } });
+    input.addEventListener('touchend', () => { if (justFocused) { setTimeout(() => input.select(), 0); justFocused = false; } });
+    input.addEventListener('input', () => {
+      // Accept comma as decimal; drop anything that is not a digit or dot
+      const clean = input.value.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+      if (clean !== input.value) input.value = clean;
+      activeSrc = input.dataset.src;
+      dirty = true;
+      if (undoSnap) hideToast();
+      refresh();
+    });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        input.blur();
-        convert();
-      }
+      if (e.key === 'Enter') { e.preventDefault(); convert(); }
     });
   });
 
-  document.getElementById('ok-btn').addEventListener('click', convert);
-
-  document.getElementById('clear-btn').addEventListener('click', () => {
-    Object.values(el).forEach(i => i.value = '');
-    Object.values(cards).forEach(c => c.classList.remove('active'));
-    activeSrc = null;
-    el.mm.focus();
+  // Per-field ×: empties just that field and keeps the cursor there
+  document.querySelectorAll('.x').forEach(btn => {
+    btn.addEventListener('pointerdown', e => e.preventDefault()); // keep keyboard open
+    btn.addEventListener('click', () => {
+      const input = btn.previousElementSibling;
+      input.value = '';
+      activeSrc = input.dataset.src;
+      dirty = true;
+      input.focus();
+      refresh();
+    });
   });
+
+  // Keep buttons usable while the keyboard is open (decimal pad has no Enter)
+  okBtn.addEventListener('pointerdown', e => e.preventDefault());
+  okBtn.addEventListener('click', convert);
+  clearBtn.addEventListener('click', clearAll);
+  document.getElementById('undo-btn').addEventListener('click', undoClear);
+
+  // Lift the floating dock above the on-screen keyboard
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const place = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty('--kb', kb + 'px');
+    };
+    vv.addEventListener('resize', place);
+    vv.addEventListener('scroll', place);
+    place();
+  }
+
+  refresh();
 </script>
 </body>
 </html>
