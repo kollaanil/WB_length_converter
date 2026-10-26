@@ -390,7 +390,7 @@
     return k === 'ft' ? (el.ft.value !== '' || el.ftin.value !== '') : el[k].value !== '';
   }
 
-  function convert() {
+  function convert(keepFocus) {
     if (!srcHasValue(activeSrc)) {
       activeSrc = ['mm', 'cm', 'inch', 'ft'].find(srcHasValue) || null;
       if (!activeSrc) return;
@@ -416,7 +416,7 @@
     }
 
     dirty = false;
-    if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+    if (!keepFocus && document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     refresh();
   }
 
@@ -488,21 +488,46 @@
 
   // Keep buttons usable while the keyboard is open (decimal pad has no Enter)
   okBtn.addEventListener('pointerdown', e => e.preventDefault());
-  okBtn.addEventListener('click', convert);
+  okBtn.addEventListener('click', () => convert());
   clearBtn.addEventListener('click', clearAll);
   document.getElementById('undo-btn').addEventListener('click', undoClear);
 
   // Lift the floating dock above the on-screen keyboard
   if (window.visualViewport) {
     const vv = window.visualViewport;
+    // iOS shrinks innerHeight with the keyboard, so measure against the
+    // layout viewport (clientHeight), which stays full height.
     const place = () => {
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const layoutH = document.documentElement.clientHeight;
+      const kb = Math.max(0, layoutH - (vv.height + vv.offsetTop));
       document.documentElement.style.setProperty('--kb', kb + 'px');
     };
     vv.addEventListener('resize', place);
     vv.addEventListener('scroll', place);
+    window.addEventListener('scroll', place, { passive: true });
+    // iOS reports the keyboard size late; re-measure a few times after focus changes
+    const settle = () => [0, 100, 300, 600].forEach(t => setTimeout(place, t));
+    document.addEventListener('focusin', settle);
+    document.addEventListener('focusout', settle);
     place();
   }
+
+  // Keyboard "Done" (✓) or tapping away converts too, so the buttons are never required
+  inputs.forEach(input => {
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        const a = document.activeElement;
+        if (a && a.classList && a.classList.contains('num')) {
+          if (a.dataset.src === input.dataset.src) return; // moving between ft ↔ in
+        }
+        if (!(dirty && srcHasValue(input.dataset.src))) return;
+        const focused = (a && a.classList && a.classList.contains('num')) ? a : null;
+        activeSrc = input.dataset.src;
+        convert(true);
+        if (focused) { activeSrc = focused.dataset.src; try { focused.select(); } catch (e) {} refresh(); }
+      }, 0);
+    });
+  });
 
   refresh();
 </script>
